@@ -501,9 +501,10 @@ wordcloud(
 )
 ```
 
-The word cloud is a global look of vocabulary. It also shows more
-specific phrases such as evos, pack, market, chelsea and passing showing
-that the merged dataset comprises multiple separate conversation themes.
+The word cloud provides a global view of the cleaned vocabulary. Common
+terms such as `play`, `fifa`, `player`, `football`, `career`, `team` and
+`mode` stand out, while `evos` indicates a more specialised Ultimate
+Team topic.
 
 ## Comparison of the three categories
 
@@ -554,11 +555,6 @@ head(ultimate_relative, 10)
 # and seeing the top 10 for career mode
 head(career_relative, 10)
 ```
-
-The word cloud provides a global view of the cleaned vocabulary. Common
-terms such as `play`, `fifa`, `player`, `football`, `career`, `team` and
-`mode` stand out, while `evos` indicates a more specialised Ultimate
-Team topic.
 
 ```{r category-plots, fig.width=9, fig.height=3.5, out.width='100%'}
 # pulling the top 10 words for each of our three categories
