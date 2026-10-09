@@ -9,11 +9,19 @@ fontsize: 10pt
 geometry: margin=0.65in
 header-includes:
   - \usepackage{setspace}
-  - \setstretch{0.95}
+  - \setstretch{0.92}
 editor_options:
   markdown:
     wrap: 72
 ---
+
+**COMP3020 Assignment: Group 27**
+
+| Group member     | Student ID | Contribution |
+|------------------|-----------:|-------------:|
+| Amansingh Bhatia |   22207819 |       33.34% |
+| Suwaid Begg      |   22209343 |       33.33% |
+| Avinay Nand      |   22208363 |       33.33% |
 
 ```{r setup, include=FALSE}
 # making sure the output style is looking the same everywhere
@@ -101,12 +109,12 @@ comments and replies made within the first 72 hours following the
 release of each video. Without this defined timeframe, older videos
 could accumulate more comments, while newer videos would not have the
 same opportunity. We collected the data using the YouTube Data API in R,
-employing the jsonlite package to read JSON replies.
+employing the jsonlite package to read JSON responses.
 
 The entire data collection process is outlined in R/01_collect_data.R.
 We used the Youtube commentThreads endpoint to gather pages of top-level
-comments, continuing until all nextPageTokens were used. We collected
-all top-level comments along with their replies via the comments API by
+comments, continuing until no nextPageTokens remained. We collected all
+top-level comments along with their replies via the comments API by
 employing the top-level comment ID as the parent ID. The publish dates
 of the top-level comments and their replies were then compared within a
 72-hour timeframe.
@@ -131,7 +139,7 @@ url = paste0(
   "&maxResults=100&order=time&key=", youtube.api.key
 )
 
-# getting the first page, but the main script is following the next page token until we are getting all the pages
+# getting the first page; the full script follows nextPageToken until no pages remain
 example_request = fromJSON(url)
 ```
 
@@ -340,10 +348,9 @@ Mark Goldbridge at 6.2%. The variation is important in the
 interpretation of the test.
 
 Since both variables were categorical, a Pearson chi-square test of
-independence was performed. variables were categorical, Pearson
-chi-square test for independence was performed. This examines if the
-observed numbers differ from the counts that we predict assuming video
-category and reply status are independent.
+independence was performed. This examines whether the observed counts
+differ from those expected if video category and reply status are
+independent.
 
 ```{r chi-square}
 # running the chi-square test we are covering in COMP3020
@@ -800,7 +807,7 @@ In the analysis of the two-cluster, we observed that the resulting
 clusters comprised **621 and 80 comments** respectively. Within these
 clusters, the smaller cluster contained **63.7% Review** content,
 whereas the larger cluster of 621 comments showed a more balanced
-distribution across the three categories. The most significant keywords
+distribution across the three categories. The most weighted terms
 identified in this smaller cluster included general Review and gameplay
 terms such as `fifa`, `look`, and `year`, so $k=2$ did not separate the
 distinctive Ultimate Team pack discussion.
@@ -1122,8 +1129,8 @@ network, few of the possible user-to-user ties exist.
 
 ## Components
 
-Since the network is a directed one, weak components are used to analyze
-the connectivity among users if direction of edges is neglected.
+iSince the network is a directed one, weak components are used to
+analyze the connectivity among users if direction of edges is neglected.
 
 ```{r full-components}
 # Checking how users are connected in the network without considering the direction of replies.
@@ -1650,17 +1657,17 @@ interaction, with review comments having the highest likelihood of
 receiving replies at 19.6%. In comparison, Ultimate Team and Career Mode
 videos had reply rates of 13.3% and 10.8%, respectively. The chi-square
 test indicated a general association between video category and the
-presence of replies, with a statistic of $\chi^2(2)$ = 7.8272 and p =
-0.01997. Although this does not establish causation, it highlights that
-early interactions were not evenly distributed among the three content
-types. Text analysis further clarifies some of these differences. Review
-comments used more general language related to FIFA, football, gameplay,
-and overall impressions. In contrast, Ultimate Team comments featured
-more specific terms like "evos," "pack," and "market," while Career Mode
-comments included words such as "sign," "career," "player," and
-"Chelsea." These findings suggest that viewers responded to the video
-content, but there are notable common vocabulary elements across the
-different category groups.
+presence of replies, with a statistic of
+$\chi^2(2) = 7.8272,\ p = 0.01997$. Although this does not establish
+causation, it highlights that early interactions were not evenly
+distributed among the three content types. Text analysis further
+clarifies some of these differences. Review comments used more general
+language related to FIFA, football, gameplay, and overall impressions.
+In contrast, Ultimate Team comments featured more specific terms like
+"evos," "pack," and "market," while Career Mode comments included words
+such as "sign," "career," "player," and "Chelsea." These findings
+suggest that viewers responded to the video content, but there are
+notable common vocabulary elements across the different category groups.
 
 Clustering analysis supports earlier conclusions while also highlighting
 their limitations. The three-cluster solution included a large mixed
@@ -1724,4 +1731,4 @@ in comments, but there is a particularly strong structure in special
 discussions about the Ultimate Team and reply hubs initiated by the
 authors of the comments.
 
-**Repository:** `PASTE_GITHUB_OR_GITLAB_URL_HERE`
+**Repository:** <https://github.com/DevAman9/COMP3020-FC27-Project>
