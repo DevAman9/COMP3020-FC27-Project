@@ -1,0 +1,1727 @@
+---
+title: "A Social Web Analysis of EA SPORTS FC 27 Launch Discourse on YouTube"
+author: "Amansingh Bhatia, Suwaid Begg, Avinay Nand"
+output:
+  pdf_document:
+    toc: false
+    number_sections: false
+fontsize: 10pt
+geometry: margin=0.65in
+header-includes:
+  - \usepackage{setspace}
+  - \setstretch{0.95}
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+# making sure the output style is looking the same everywhere
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  collapse = TRUE,
+  fig.align = "center",
+  fig.width = 7,
+  fig.height = 4.5
+)
+
+# loading just the packages we are using for the next few parts
+library(jsonlite)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+
+# pulling in the saved data so we are working with the same files for everything
+selected_videos = read.csv("data_raw/selected_videos.csv", stringsAsFactors = FALSE)
+top_comments = read.csv("data_raw/fc27_top_level_comments_72h.csv", stringsAsFactors = FALSE)
+replies = read.csv("data_raw/fc27_replies_72h.csv", stringsAsFactors = FALSE)
+analysis_comments = read.csv("data_clean/fc27_comments_720.csv", stringsAsFactors = FALSE)
+collection_summary = read.csv("data_clean/collection_summary.csv", stringsAsFactors = FALSE)
+```
+
+# 1. Investigation Overview
+
+This report investigates early EA SPORTS FC 27 launch discourse on
+YouTube using content and interaction analysis. Instead of considering
+all FC 27 comments together, we focused on comparing three kinds of
+content created by creators: Review / First Impressions, Ultimate Team
+and Career Mode.
+
+The research question of the project is:
+
+> **What is the structure of early FC 27 launch discourse in different
+> categories of YouTube videos, and how does this discourse get
+> organised in terms of user interaction**?
+
+The research design is guided by four closely related research
+questions:
+
+-   **Interaction**: Is there any sort of relationship that can be seen
+    between the category of a video and how people reply to a top-level
+    comment in 72 hours?
+
+-   **Text/content**: What kinds of words and text patterns can be found
+    in the comments and how do these words and patterns differ from one
+    category to another?
+
+-   **Clustering**: Can comments be grouped into clusters based on
+    textual features, this means can they be categorized in some way?
+
+-   **Network**: How is the network of replies structured and who are
+    considered to be important users in that network?
+
+All these stages are supposed to come together and provide one
+comprehensive investigation of the phenomenon being studied. In
+hypothesis testing, the first step would be to determine if there are
+any differences in the interaction levels among different types of
+content. Afterwards, in the text analysis stage, it would be necessary
+to identify what topics users are discussing, and clustering should
+reveal whether or not there are meaningful groups of texts without
+actually using the category labels for that purpose.
+
+# 2.1. Data Collection
+
+This study examines early discussions on YouTube regarding EA SPORTS FC
+27. We analysed three types of FC 27 videos: Reviews or First
+Impressions, Ultimate Team, and Career Mode. We selected three videos
+from each category, resulting in a total of nine videos.
+
+Initially, we screened candidate videos to determine which ones would
+form the dataset. The selected videos needed to be relevant to FC 27,
+fit into one of the three chosen categories, be in English, and be
+produced by individual creators rather than EA. It was essential to
+include different creators in each category and to ensure that the full
+72 hours for observation were available. Additionally, we required
+adequate comments from early viewers to achieve a balanced sample.
+
+To enhance the comparability of the videos, we retained only the
+comments and replies made within the first 72 hours following the
+release of each video. Without this defined timeframe, older videos
+could accumulate more comments, while newer videos would not have the
+same opportunity. We collected the data using the YouTube Data API in R,
+employing the jsonlite package to read JSON replies.
+
+The entire data collection process is outlined in R/01_collect_data.R.
+We used the Youtube commentThreads endpoint to gather pages of top-level
+comments, continuing until all nextPageTokens were used. We collected
+all top-level comments along with their replies via the comments API by
+employing the top-level comment ID as the parent ID. The publish dates
+of the top-level comments and their replies were then compared within a
+72-hour timeframe.
+
+The following important top-level variables were collected: videoId,
+commentId, authorDisplayName and authorChannelId, commentText, likes,
+publicationTime and replyCount. Among the reply variables, the following
+data were collected: replyId, parentCommentId, parentAuthorDisplayName
+and authorDisplayName, parentChannelId and authorChannelId, replyText,
+likes, publicationTime. Furthermore, details about creator, video title
+and analytical category were provided.
+
+```{r api-example, eval=FALSE}
+# keeping the api key saved in a different file so it's not showing up in the code we are handing in
+source("api_key.R")
+
+videoId = selected_videos$videoId[1]
+
+url = paste0(
+  "https://www.googleapis.com/youtube/v3/commentThreads",
+  "?part=snippet&videoId=", videoId,
+  "&maxResults=100&order=time&key=", youtube.api.key
+)
+
+# getting the first page, but the main script is following the next page token until we are getting all the pages
+example_request = fromJSON(url)
+```
+
+The final dataset has 1,388 unique top-level comments and 480 unique
+replies. For Sections 2.2, 2.3, and 2.4, 80 top-level comments from
+every video, which is nine videos in total, are picked randomly and with
+a set seed. This leads to a total of 720 balanced comments which
+consists of 240 comments in each of the three categories. In Section
+2.5, all the replies from the dataset are used.
+
+```{r data-summary}
+# putting together a table showing the total amount of data we are looking at
+data.frame(
+  Measure = c(
+    "Selected videos",
+    "Unique top-level comments",
+    "Unique replies",
+    "Balanced analysis comments"
+  ),
+  # counting up the rows in our datasets to get the final numbers for each part
+  Total = c(
+    nrow(selected_videos),
+    nrow(top_comments),
+    nrow(replies),
+    nrow(analysis_comments)
+  )
+); 
+```
+
+There was a lot of variation in how much natural discussion occurred, so
+there’s a need to balance the analysis sample to make sure that the
+bigger videos don’t overshadow the hypothesis and the text and cluster
+analysis that follows.
+
+```{r collection-table}
+# making a table showing each creator we are looking at
+knitr::kable(
+  collection_summary[, c(
+    "category",
+    "creator",
+    # pulling the columns showing their natural activity over the first 72 hours
+    "topLevelComments72h",
+    "sampledComments",
+    "replies72h"
+  )],
+  # renaming the headings here so the table is reading clearly for the assignment
+  col.names = c(
+    "Category",
+    "Creator",
+    "Top-level comments",
+    "Sampled",
+    "Replies"
+  ),
+  caption = "Selected videos and data collected in the first 72 hours"
+)
+```
+
+For the final data quality check, we examined duplicate comment and
+reply IDs prior to analysis.
+
+```{r collection-checks}
+
+
+# checking our data one last time for any duplicates
+c(
+  duplicate_comments = sum(duplicated(top_comments$commentId)),
+  # making sure both of these numbers are coming out as zero
+  duplicate_replies = sum(duplicated(replies$replyId))
+)
+```
+
+Final files did not have any duplicate IDs. The collection table shows
+that any video that was collected gave 80 comments to the balanced
+sample, which is something to note.
+
+There are some restrictions that apply to this collection. The nine
+videos are not a random selection of all of the FC 27 videos, because
+they were picked on purpose, and the discussion about the videos can
+vary by individual makers. The 72-hour window is focused on the initial
+reactions to the launch and it doesn't really include any later
+discussion. Also, it’s important to mention that YouTube commenters are
+a self-selected group, so the results from this should not be seen as a
+true survey of all FC 27 players or anything like that.
+
+# 2.2 Hypothesis Testing
+
+The first analytical question is:
+
+> **Is video category associated with whether a sampled top-level
+> comment receives at least one reply within the first 72 hours?**
+
+This question adds an interaction measure to the comparison between
+Review, Ultimate Team and Career Mode videos.
+
+The hypotheses are:
+
+$$
+H_0:\text{ Video category and reply status are independent.}
+$$
+
+$$
+H_A:\text{ Video category and reply status are associated.}
+$$
+
+A comment is considered to have received a reply if its comment ID is
+listed as a parent comment in the 72-hour reply dataset.
+
+```{r reply-status}
+# checking if the comments we sampled are showing up in the 72-hour reply file
+analysis_comments$receivedReply72h = ifelse(
+  analysis_comments$commentId %in% unique(replies$parentCommentId),
+  "At least one reply",
+  "No replies"
+)
+
+# making sure our categories are reading in the right order for the assignment
+analysis_comments$category = factor(
+  analysis_comments$category,
+  levels = c("Review", "Ultimate Team", "Career Mode")
+)
+
+# setting up the reply status as a factor so the table is looking clean
+analysis_comments$receivedReply72h = factor(
+  analysis_comments$receivedReply72h,
+  levels = c("No replies", "At least one reply")
+)
+
+# putting together a table to see the actual counts
+reply_table = table(
+  analysis_comments$category,
+  analysis_comments$receivedReply72h
+)
+
+reply_table
+# calculating the proportions for each category based on the table we just made
+round(prop.table(reply_table, 1), 3)
+```
+
+The "Review" category received the highest reply rate at 19.6%, followed
+by "Ultimate Team" at 13.3%, and "Career Mode" at 10.8%.
+
+Given that there are only nine videos available for comments, we also
+calculated the response rate for each individual video. This approach
+assists in identifying whether the overall reply rate for each category
+is influenced by any specific creator.
+
+```{r reply-rate-by-video}
+# turning the reply status into numbers so we are able to add them up easily
+analysis_comments$receivedReplyNumber = ifelse(
+  analysis_comments$receivedReply72h == "At least one reply",
+  1,
+  0
+)
+
+# below we are grouping everything by video and creator to see how many replies each one is getting
+reply_by_video = aggregate(
+  receivedReplyNumber ~ videoId + category + creator,
+  data = analysis_comments,
+  FUN = sum
+)
+
+names(reply_by_video)[4] = "CommentsWithReply"
+# working out the percentage since we are knowing each video is giving us exactly 80 sampled comments
+reply_by_video$ReplyRatePercent = round(
+  100 * reply_by_video$CommentsWithReply / 80,
+  1
+)
+
+# sorting the rows so the categories are showing up in the correct order for the report
+reply_by_video = reply_by_video[
+  order(
+    factor(
+      reply_by_video$category,
+      levels = c("Review", "Ultimate Team", "Career Mode")
+    ),
+    reply_by_video$creator
+  ),
+]
+
+# building the final latex table to show the reply rates for the nine videos
+knitr::kable(
+  reply_by_video[, c(
+    "category",
+    "creator",
+    "CommentsWithReply",
+    "ReplyRatePercent"
+  )],
+  col.names = c(
+    "Category",
+    "Creator",
+    "Comments with reply",
+    "Reply rate (%)"
+  ),
+  row.names = FALSE,
+  caption = "Reply rates within the nine selected videos",
+  format = "latex",
+  booktabs = TRUE,
+  longtable = FALSE
+)
+```
+
+The three Review videos were quite similar at 18.8% to 20.0%. Ultimate
+Team varied from 10.0% to 16.2%. Career mode had more varied results;
+BFordLancer was at 18.8% compared to CaniSports which was at 7.5% and
+Mark Goldbridge at 6.2%. The variation is important in the
+interpretation of the test.
+
+Since both variables were categorical, a Pearson chi-square test of
+independence was performed. variables were categorical, Pearson
+chi-square test for independence was performed. This examines if the
+observed numbers differ from the counts that we predict assuming video
+category and reply status are independent.
+
+```{r chi-square}
+# running the chi-square test we are covering in COMP3020
+reply_test = chisq.test(reply_table)
+
+# showing the main results here so we are seeing how it went
+reply_test
+
+# checking our expected numbers to make sure they are looking okay
+round(reply_test$expected, 2)
+
+# finding the smallest expected value just to make sure everything is working right
+min(reply_test$expected)
+```
+
+The test produced a statistic of $\chi^2(2) = 7.8272$ with a p-value of
+0.01997. Since the p-value is below 0.05, we reject the null hypothesis
+(H0). This indicates that there is a relationship between video type and
+the likelihood of receiving at least one reply to comments. The test
+assesses the overall association across three categories but does not
+confirm that all pairs of categories differ.
+
+All expected cell frequencies were at least 35, validating the use of
+the conventional chi-square approximation. Under the assumption of
+independence, 35 comments with at least one reply would be expected in
+each category. Review had 47 comments with at least one reply, while
+Career Mode had 26, which contributes to the observed disparity.
+
+This suggests a relationship rather than a direct cause-and-effect link.
+Because comments are nested within nine selected videos, the
+independence assumption may not hold perfectly. Therefore, the results
+of the chi-square test should be interpreted as indicative of a
+relationship among these specific launch comments.
+
+# 2.3 Text and Content Analysis
+
+The next question is:
+
+> **What words and textual patterns characterise the comments, and how
+> do these patterns differ across the three video categories?**
+
+## Text cleaning
+
+The balanced dataset contained 720 non-missing, non-blank comments.
+
+```{r text-check}
+# checking for any missing comments before we are starting to build the text corpus
+c(
+  comments = nrow(analysis_comments),
+  missing = sum(is.na(analysis_comments$commentText)),
+  # counting up the blank ones here just to be sure the data is looking clean
+  blank = sum(trimws(analysis_comments$commentText) == "")
+)
+```
+
+The comments were compiled into a corpus. We removed URLs, digits,
+punctuation, and common English stop words, converting all words to
+lower case.
+
+Additionally, we used a small custom set of stop words. This mainly
+filtered out dataset labels, creator names, and generic conversational
+terms that appeared frequently but were not helpful in distinguishing
+discussion topics.
+
+```{r corpus}
+# fixing up any empty comments first so they are not breaking the code
+analysis_comments$commentText[is.na(analysis_comments$commentText)] = ""
+
+# building the main text corpus where we are treating every youtube comment as its own document
+comments.corpus = Corpus(VectorSource(analysis_comments$commentText))
+
+# converting the text to ascii which is dropping all the emojis from the comments
+comments.corpus = tm_map(
+  comments.corpus,
+  function(x) iconv(x, to = "ASCII", sub = " ")
+)
+
+# setting up a function for removing any web links people are posting
+remove_urls = content_transformer(function(x) {
+  gsub("https?://\\S+|www\\.\\S+", " ", x, perl = TRUE)
+})
+
+# actually taking the urls out of the text now
+comments.corpus = tm_map(comments.corpus, remove_urls)
+
+# doing some basic cleaning here like taking out the numbers and punctuation
+comments.corpus = tm_map(comments.corpus, removeNumbers)
+comments.corpus = tm_map(comments.corpus, removePunctuation)
+
+# making everything lowercase and getting rid of the extra spaces
+comments.corpus = tm_map(comments.corpus, stripWhitespace)
+comments.corpus = tm_map(comments.corpus, tolower)
+
+# making a list of custom stop words so we are filtering out game names and creators that are taking over our word counts
+custom_words = c(
+  "fc", "fc27", "eafc", "ea", "sports",
+  "game", "like", "just", "get", "got", "can",
+  "will", "even", "much", "still", "now", "one",
+  "video", "really", "back",
+  "dont", "cant", "ive", "im", "thats", "youre",
+  "yeah", "bro",
+  "gamingbolt", "inception", "machete",
+  "auziomf", "auzio", "aa9skillz", "skillz",
+  "nepenthez", "nep", "canisports", "cani",
+  "mark", "goldbridge", "bfordlancer", "bford"
+)
+
+# removing the standard stop words and our custom list from the text
+comments.corpus = tm_map(
+  comments.corpus,
+  removeWords,
+  c(stopwords(), custom_words)
+)
+
+# stripping the extra spaces one more time so the text is looking nice and neat
+comments.corpus = tm_map(comments.corpus, stripWhitespace)
+```
+
+## Overall word frequencies
+
+We created a term-document matrix from the cleaned corpus. Then, we
+calculated the total frequency of each term across all 720 comments.
+
+```{r frequency-matrix}
+# building the term document matrix here so we are ready to analyze the text
+comments.tdm = TermDocumentMatrix(comments.corpus)
+comments.matrix = as.matrix(comments.tdm)
+
+# counting up how often each term is showing up in our data
+term_frequency = sort(rowSums(comments.matrix), decreasing = TRUE)
+
+# looking at the 20 most common words we are finding
+head(term_frequency, 20)
+```
+
+Each category contains an equal number of comments, thus eliminating one
+possible source of imbalance. However, the comments could vary in terms
+of their number of words. To make it easier to compare the data
+visually, we normalized the frequency of each term with the total number
+of cleaned terms in each category.
+
+```{r overall-wordcloud, fig.width=6.5, fig.height=3.2, out.width='60%'}
+# setting the seed here so we are getting the exact same word cloud every time
+set.seed(3020)
+
+# building the actual word cloud for the words that are showing up at least 5 times
+wordcloud(
+  words = names(term_frequency),
+  freq = term_frequency,
+  min.freq = 5,
+  # limiting this to 80 words so the plot is not looking too messy for the report
+  max.words = 80,
+  random.order = FALSE
+)
+```
+
+The word cloud is a global look of vocabulary. It also shows more
+specific phrases such as evos, pack, market, chelsea and passing showing
+that the merged dataset comprises multiple separate conversation themes.
+
+## Comparison of the three categories
+
+Each category has the same number of comments, so that removes one cause
+of imbalance, but the comments themselves can have varied numbers of
+words. To allow for a truer visual comparison, each term count was
+consequently divided by the total number of cleaned term occurrences in
+that category.
+
+```{r category-frequencies}
+# counting up the words for the review videos
+review_counts = rowSums(
+  comments.matrix[, analysis_comments$category == "Review", drop = FALSE]
+)
+
+# doing the same counting for the ultimate team ones
+ultimate_counts = rowSums(
+  comments.matrix[, analysis_comments$category == "Ultimate Team", drop = FALSE]
+)
+
+# and counting the words for the career mode category
+career_counts = rowSums(
+  comments.matrix[, analysis_comments$category == "Career Mode", drop = FALSE]
+)
+
+# turning these counts into percentages so we are able to compare the categories fairly
+review_relative = sort(
+  100 * review_counts / sum(review_counts),
+  decreasing = TRUE
+)
+
+# sorting the ultimate team percentages from highest to lowest
+ultimate_relative = sort(
+  100 * ultimate_counts / sum(ultimate_counts),
+  decreasing = TRUE
+)
+
+# getting the career mode percentages sorted out too
+career_relative = sort(
+  100 * career_counts / sum(career_counts),
+  decreasing = TRUE
+)
+
+# looking at the top 10 words for the review videos
+head(review_relative, 10)
+# checking the top 10 for ultimate team
+head(ultimate_relative, 10)
+# and seeing the top 10 for career mode
+head(career_relative, 10)
+```
+
+The most frequent terms include `play`, `fifa`, `year`, `player`,
+`team`, `mode`, `football`, `career` and `gameplay`, showing that
+discussion centres on gameplay, players and game modes. More specialised
+terms such as `evos`, `pack`, `market`, `chelsea` and `passing` indicate
+several narrower discussion themes.
+
+```{r category-plots, fig.width=9, fig.height=3.5, out.width='100%'}
+# pulling the top 10 words for each of our three categories
+review_top = head(review_relative, 10)
+ultimate_top = head(ultimate_relative, 10)
+career_top = head(career_relative, 10)
+
+# finding the highest number across all three so we are setting the same axis limit for a fair comparison
+common_max = max(review_top, ultimate_top, career_top)
+
+# setting up the layout so we are showing all three graphs side by side
+par(mfrow = c(1, 3), mar = c(4, 7, 3, 1))
+
+# building the bar chart for the review category first
+barplot(
+  rev(review_top),
+  horiz = TRUE,
+  las = 1,
+  main = "Review",
+  xlab = "% of cleaned term occurrences",
+  xlim = c(0, common_max * 1.05),
+  cex.names = 0.8
+)
+
+# making the second bar chart for the ultimate team words
+barplot(
+  rev(ultimate_top),
+  horiz = TRUE,
+  las = 1,
+  main = "Ultimate Team",
+  xlab = "% of cleaned term occurrences",
+  xlim = c(0, common_max * 1.05),
+  cex.names = 0.8
+)
+
+# putting together the last bar chart for career mode
+barplot(
+  rev(career_top),
+  horiz = TRUE,
+  las = 1,
+  main = "Career Mode",
+  xlab = "% of cleaned term occurrences",
+  xlim = c(0, common_max * 1.05),
+  cex.names = 0.8
+)
+
+# resetting the plot layout back to normal so we are not messing up any future graphs
+par(mfrow = c(1, 1))
+```
+
+Category patterns remain identifiable even when controlling for the
+amount of cleaned text. The review conversation is more general,
+Ultimate Team has the most specific mode language, and Career Mode has
+identifiable career-related phrases. However, some terms like player or
+club names can also be an artefact of the specific creators and videos
+selected, thus these patterns should not be seen as pure category
+effects.
+
+## TF-IDF weighting
+
+Raw frequency shows common words. The cleaned corpus was stemmed and
+weighted using TF-IDF to provide a representation that assigns more
+weight to terms that are distinctive in the individual comments.
+
+```{r tfidf}
+# stemming the words here so we are counting related forms together like turning playing into play
+stemmed.corpus = tm_map(comments.corpus, stemDocument)
+
+# making a new term document matrix for these stemmed words
+stemmed.tdm = TermDocumentMatrix(stemmed.corpus)
+
+# applying the tf-idf weighting which is downweighting the words that are showing up in too many comments
+stemmed.tfidf = weightTfIdf(stemmed.tdm)
+
+# converting this into a matrix format so we are able to work with the numbers
+tfidf.matrix = as.matrix(stemmed.tfidf)
+
+# adding up and sorting the terms by their total weight from highest to lowest
+tfidf_term_weight = sort(rowSums(tfidf.matrix), decreasing = TRUE)
+
+# pulling up the top 15 terms so we are seeing what is most important based on the weights
+head(tfidf_term_weight, 15)
+```
+
+The most weighted total TF-IDF words included more particular words such
+as pepe, lucio, pack, goat, fifa and look. Herein lies the ability of
+TF-IDF to identify unique names and language related to a particular
+mode rather than through mere frequency. Here we see that frequency
+analysis accounts for what is common throughout the sample, while TF-IDF
+helps in identifying unique terms.
+
+Word-level processing has its drawbacks. The word analysis method
+doesn't preserve the meaning of the sentence, sarcasm, or context. The
+custom stop-word list involves judgement. Ascii coding eliminates emojis
+and some special characters. Words related to a particular player, club
+or creator may reflect one selected video rather than the whole
+category. It would be fair to see the obtained results as the general
+vocabulary tendencies, not the complete interpretation of the intentions
+of each commentator.
+
+# 2.4 Clustering
+
+The final question in this part of the report is: **Can the comments be
+grouped into meaningful clusters based on their textual content?**
+
+Since we used the clustering process using the TF-IDF vector of Section
+2.3, therefore clustering results are a direct output of the previous
+text analysis.
+
+## Preparing the document vectors
+
+In order to do clustering the comments had to be rows and terms had to
+be columns. Comments that became completely empty after preprocessing
+were removed because they contain no terms that can be compared.
+
+```{r clustering-data}
+# flipping the matrix around so each row is a single comment
+clustering.matrix = t(tfidf.matrix)
+
+# figuring out which comments are completely empty now
+empty_documents = which(rowSums(abs(clustering.matrix)) == 0)
+
+# checking how many empty ones we got
+length(empty_documents)
+
+# taking out those empty comments from our main matrix
+clustering.matrix = clustering.matrix[-empty_documents, ]
+
+# keeping the category labels for the comments we are saving so we can look at them later
+cluster_categories = analysis_comments$category[-empty_documents]
+
+# just looking at the final size and seeing what categories we have left
+dim(clustering.matrix)
+table(cluster_categories)
+```
+
+After we had processed the data for clustering, 19 comments had become
+empty and we used 701 comments for clustering.
+
+Text documents showed variability in length and are often sparse. We
+utilised cosine distance, ensuring that the TF-IDF vectors were
+normalised to unit length, in accordance with the clustering techniques.
+For unit vectors, the cosine distance corresponds to half the squared
+Euclidean distance.
+
+Since K-means operates in Euclidean space, we used Multidimensional
+Scaling (MDS) to convert the cosine distances into Euclidean space.
+
+```{r cosine-mds}
+# Normalising the TF-IDF vectors so they all have a length of one
+norm.matrix = diag(
+  1 / sqrt(rowSums(clustering.matrix^2))
+) %*% clustering.matrix
+
+# Converting those euclidean distances into cosine distances
+D = dist(norm.matrix, method = "euclidean")^2 / 2
+
+N = nrow(clustering.matrix)
+
+# Using almost all the dimensions for the clustering step
+mds.matrix = cmdscale(D, k = N - 1)
+
+# Keeping only two dimensions for the plot
+mds2.matrix = cmdscale(D, k = 2)
+```
+
+The high-dimensional MDS representation is used for clustering. The
+separate two-dimensional representation is used only for visualisation.
+
+## Choosing the number of clusters
+
+The elbow method was used to examine solutions from 1 to 15 clusters.
+
+```{r elbow, fig.width=6.5, fig.height=3.8, out.width='78%'}
+# Checking the number of clusters from 1 to 15 using the within-cluster sum of squares.
+set.seed(3020)
+
+# Creating a vector to store the sum of squares for each cluster count.
+SSW = rep(0, 15)
+
+# Running k-means for each number of clusters.
+# Using nstart = 20 to reduce the effect of random starting points.
+for (k in 1:15) {
+  K = kmeans(mds.matrix, centers = k, nstart = 20)
+  SSW[k] = K$tot.withinss
+}
+
+# Plotting the results to see where the decrease in the sum of squares starts slowing down.
+plot(
+  1:15,
+  SSW,
+  type = "b",
+  xlab = "Number of clusters",
+  ylab = "Within-cluster sum of squares",
+  main = "Elbow method"
+)
+```
+
+The elbow curve gradually declines instead of indicating a single
+optimal value. Therefore, we compared the nearby solutions of *2, 3, 4,
+and 5 clusters* instead of selecting $k$ based solely on the graph.
+
+```{r compare-k}
+# Setting the same seed before each run to keep the results consistent.
+set.seed(3020)
+K2 = kmeans(mds.matrix, centers = 2, nstart = 20)
+
+# Running k-means again with 3 clusters.
+set.seed(3020)
+K3 = kmeans(mds.matrix, centers = 3, nstart = 20)
+
+# Trying the same process with 4 clusters.
+set.seed(3020)
+K4 = kmeans(mds.matrix, centers = 4, nstart = 20)
+
+# Checking one more solution using 5 clusters.
+set.seed(3020)
+K5 = kmeans(mds.matrix, centers = 5, nstart = 20)
+
+# Creating a table to compare the cluster sizes for each solution.
+cluster_sizes = data.frame(
+  Solution = c("k = 2", "k = 3", "k = 4", "k = 5"),
+  Sizes = c(
+    paste(sort(table(K2$cluster), decreasing = TRUE), collapse = ", "),
+    paste(sort(table(K3$cluster), decreasing = TRUE), collapse = ", "),
+    paste(sort(table(K4$cluster), decreasing = TRUE), collapse = ", "),
+    paste(sort(table(K5$cluster), decreasing = TRUE), collapse = ", ")
+  )
+)
+
+# Displaying the cluster sizes to see how the observations are being divided.
+knitr::kable(
+  cluster_sizes,
+  caption = "Cluster sizes for the candidate solutions"
+)
+```
+
+In the analysis of the two-cluster, we observed that the resulting
+clusters comprised **621 and 80 comments** respectively. Within these
+clusters, the smaller cluster contained **63.7% Review** content,
+whereas the larger cluster of 621 comments showed a more balanced
+distribution across the three categories. The most significant keywords
+identified in this smaller cluster included general Review and gameplay
+terms such as `fifa`, `look`, and `year`, so $k=2$ did not separate the
+distinctive Ultimate Team pack discussion.
+
+```{r k2-check}
+# Checking how the different categories are being grouped in the 2-cluster solution.
+round(
+  prop.table(
+    table(K2$cluster, cluster_categories),
+    1
+  ),
+  3
+)
+```
+
+With the 3-cluster solution, there were **534, 145, and 22 comments** in
+each cluster. The additional cluster represents a small but distinctive
+group of Ultimate Team pack comments, while the 145-comment
+Review/gameplay group also remains interpretable.
+
+For that reason, **three clusters were chosen**. This choice was made
+taking into account the shape of the elbow together with the structure
+and interpretation of $k=2,3,4,5$, and not the fact that there were
+three video categories in the initial dataset.
+
+## Interpretation of three clusters
+
+The video categories were not used in the clustering process. They are
+mentioned subsequently solely for explanatory purposes.
+
+```{r k3-category-mix}
+# Checking how the video categories are being distributed across the 3 clusters.
+# The categories are only being used for comparison and not for creating the clusters.
+round(
+  prop.table(
+    table(K3$cluster, cluster_categories),
+    1
+  ),
+  3
+)
+```
+
+Cluster 1 represents a large mixed cluster that encompasses comments
+from all three categories, with Career Mode comprising 39.0%, Ultimate
+Team 34.5%, and Review 26.6%.
+
+Cluster 2 consists solely of comments from the Ultimate Team category.
+The absence of label information for k-means suggests that the use of
+pack-specific terminology effectively characterises the text within this
+cluster.
+
+Cluster 3 is mostly filled with comments from the Review category,
+accounting for 64.8%. While this does not imply complete separation, it
+demonstrates that the broader Review vocabulary discussed in Section 2.3
+is also evident in the unsupervised clustering.
+
+The mean TF-IDF weight of each term was then calculated for each
+cluster.
+
+```{r k3-terms}
+# Looking at the TF-IDF values to find the most important terms in each cluster.
+for (cluster_number in 1:3) {
+  ids = which(K3$cluster == cluster_number)
+
+  # Calculating the average TF-IDF weight for each term in the cluster.
+  weights = colMeans(clustering.matrix[ids, ])
+
+  # Displaying the 10 terms with the highest average weights for each cluster.
+  cat("\nCluster", cluster_number, "\n")
+  print(sort(weights, decreasing = TRUE)[1:10])
+}
+```
+
+**Cluster 1 - Discussion Involving Both Players and General Topics.**\
+This cluster is the most extensive, containing terms such as `pepe`,
+`lucio`, `goat`, `love`, `good`, `buy`, `chelsea`, and `pirlo`. The
+balance of categories and the diverse vocabulary utilised suggest that
+this cluster deals with broad discussions, player mentions, and
+reactions rather than a specific topic.
+
+**Cluster 2 - Ultimate Team Pack Discussion.**\
+This cluster comprises comments related to Ultimate Team. The most
+interpretable terms within it are `pack`, `icon`, and `ultim`, which
+clearly convey the concept of Ultimate Team packs. There are additional
+highly weighted stems that lack meaning without context, leading us to
+designate the cluster name based on the most interpretable terms.
+
+**Cluster 3 - Review and Gameplay Discussion.**\
+This cluster predominantly consists of review comments and includes
+terms such as `fifa`, `play`, `look`, `year`, `football`, `efootball`,
+and `feel`.
+
+```{r k3-plot, fig.width=6.5, fig.height=3.2, out.width='60%'}
+# Plotting the MDS points in two dimensions to see how the three clusters are being separated.
+# Using different colours to show which cluster each point belongs to.
+plot(
+  mds2.matrix,
+  col = K3$cluster,
+  pch = 16,
+  xlab = "MDS dimension 1",
+  ylab = "MDS dimension 2",
+  main = "Three-cluster solution"
+)
+
+# Adding a legend to make it easier to identify each cluster in the plot.
+legend(
+  "topright",
+  legend = c("Cluster 1", "Cluster 2", "Cluster 3"),
+  col = 1:3,
+  pch = 16,
+  cex = 0.8
+)
+```
+
+The 2D MDS plot shows a substantial overlapping group, along with two
+other branches that are more distinct. This aligns with the numerical
+results, as most comments fall into a broad mixed cluster, while the
+pack-related and review/gameplay clusters are more specific.
+
+Therefore, we cannot view the cluster formation as the creation of a
+distinct set of three thematic categories. The Ultimate Team pack
+cluster stands out as the most noticeable. Following that, the
+Review/gameplay cluster is also visible, although it is less distinct
+than the Ultimate Team pack cluster. Our text analysis showed vocabulary
+linked to Career Mode, but this cluster did not emerge as a major one in
+the three-cluster solution.
+
+This is an important limitation of the analysis rather than a failure of
+the method. Given the fact that comments are very short and include lots
+of football-related vocabulary in common, it is unlikely to achieve
+complete separation of topics. It means that the analysis implies the
+existence of some specialized topics in the general discussion space
+related to the FC 27 launch.
+
+Some other limitations of this analysis are its dependence on the
+earlier cleaning steps and TF-IDF procedure, as well as the need to
+remove 19 empty comments.
+
+```{r network-setup, include=FALSE}
+# Loading igraph for the network analysis.
+library(igraph)
+
+# Creating a function to convert unusual characters into simple text.
+# This is helping to avoid problems with usernames when generating the PDF.
+safe_ascii = function(x) {
+  y = iconv(x, from = "", to = "ASCII//TRANSLIT", sub = "")
+  y[is.na(y)] = ""
+  y
+}
+
+# Cleaning the author names and creator names in the replies data.
+replies$replyAuthor = safe_ascii(replies$replyAuthor)
+replies$parentAuthor = safe_ascii(replies$parentAuthor)
+replies$creator = safe_ascii(replies$creator)
+
+# Cleaning the creator names and video titles in the selected videos.
+# Channel IDs are still being used to identify users where available.
+selected_videos$creator = safe_ascii(selected_videos$creator)
+selected_videos$title = safe_ascii(selected_videos$title)
+```
+
+# 2.5 Network Analysis
+
+The last portion of the research focuses on who **talks to whom** in the
+chosen FC 27 discussions on YouTube.
+
+This network analysis is founded on the actual replies collected within
+the same 72-hour periods as in previous sections. Each node represents a
+YouTube user, with a directed edge $A \rightarrow B$ indicating that
+user A responded to a top-level comment made by user B.
+
+This directional orientation is very important, as it allows for
+distinct interpretations of in-degree and out-degree. A high in-degree
+signifies that a considerable number of users have replied to that
+particular user, while a high out-degree indicates that the user has
+engaged with numerous other top-level commenters.
+
+## Creating the list of edges for replies
+
+We used YouTube channel IDs as the primary identifiers for users, given
+their greater persistence compared to display names. In instances where
+an ID was unavailable, we employed the public display name as a
+substitute.
+
+```{r network-ids}
+# Using channel IDs to identify users even if their display names change.
+# When a channel ID is missing, the username is being used instead.
+reply_from = ifelse(
+  is.na(replies$replyAuthorChannelId) | replies$replyAuthorChannelId == "",
+  replies$replyAuthor,
+  replies$replyAuthorChannelId
+)
+
+# Applying the same process to identify the users receiving the replies.
+# Display names are also being kept separately to help identify users in the network.
+reply_to = ifelse(
+  is.na(replies$parentAuthorChannelId) | replies$parentAuthorChannelId == "",
+  replies$parentAuthor,
+  replies$parentAuthorChannelId
+)
+```
+
+We removed records with a missing endpoint. Additionally, we excluded
+self-replies, as an edge from a user to themselves does not signify
+interaction between two distinct users.
+
+```{r edge-data}
+# Combining the reply users and video details into one table for the network analysis.
+network_data = data.frame(
+  from = reply_from,
+  to = reply_to,
+  replyAuthor = replies$replyAuthor,
+  parentAuthor = replies$parentAuthor,
+  videoId = replies$videoId,
+  category = replies$category,
+  creator = replies$creator,
+  stringsAsFactors = FALSE
+)
+
+# Removing replies where either user cannot be identified.
+# This is keeping only the replies with valid users on both sides.
+network_data = network_data[
+  !is.na(network_data$from) &
+  !is.na(network_data$to) &
+  network_data$from != "" &
+  network_data$to != "",
+]
+
+# Removing replies where both users have the same identifier.
+network_data = network_data[
+  network_data$from != network_data$to,
+]
+
+# Checking how many reply records are remaining after cleaning.
+nrow(network_data)
+```
+
+From the total of 480 replies collected, we obtained **436 usable
+non-self replies** following the above filtering process.
+
+Some users provided multiple responses to the same individual. In
+constructing the graph, we merged multiple A-to-B relationships into a
+single relationship to ensure that the degree reflected the number of
+unique user contacts rather than the total number of replies.
+
+```{r full-edge-list}
+# Keeping only one reply connection for each pair of users.
+# This is avoiding repeated replies from affecting the degree centrality results.
+full_edges = unique(
+  network_data[, c("from", "to")]
+)
+
+# Checking the number of rows and columns in the final edge list.
+dim(full_edges)
+```
+
+The 436 usable reply events became **401 unique directed user-to-user
+ties**.
+
+## Full reply network
+
+The full graph combines reply relationships from all nine selected
+videos.
+
+```{r author-lookup}
+# Creating a lookup table to match channel IDs with readable usernames.
+# Keeping the usernames separately so the network results are easier to understand.
+author_lookup = rbind(
+  data.frame(
+    id = network_data$from,
+    label = network_data$replyAuthor,
+    stringsAsFactors = FALSE
+  ),
+  data.frame(
+    id = network_data$to,
+    label = network_data$parentAuthor,
+    stringsAsFactors = FALSE
+  )
+)
+
+# Removing repeated IDs and keeping the first username found for each user.
+# Channel IDs are still being used as the main identifiers in the network.
+author_lookup = author_lookup[
+  !duplicated(author_lookup$id),
+]
+```
+
+```{r full-graph}
+# Creating a directed network using the unique reply connections between users.
+g = graph_from_data_frame(
+  full_edges,
+  directed = TRUE
+)
+
+# Matching each user ID with their display name to make the network easier to read.
+V(g)$display = author_lookup$label[
+  match(V(g)$name, author_lookup$id)
+]
+
+# Using the original user ID when a display name is missing.
+V(g)$display[
+  is.na(V(g)$display)
+] = V(g)$name[
+  is.na(V(g)$display)
+]
+
+# Counting the users and connections in the network.
+# Also calculating the network density to see how closely the users are connected.
+data.frame(
+  Nodes = vcount(g),
+  Edges = ecount(g),
+  Density = round(edge_density(g, loops = FALSE), 4)
+)
+```
+
+The entire network has **492 nodes and 401 distinct edges**, and it has
+a density value of **approximately 0.0017**. It is a very sparse
+network, few of the possible user-to-user ties exist.
+
+## Components
+
+Since the network is a directed one, weak components are used to analyze
+the connectivity among users if direction of edges is neglected.
+
+```{r full-components}
+# Checking how users are connected in the network without considering the direction of replies.
+full_components = components(
+  g,
+  mode = "weak"
+)
+
+# Counting the separate groups and finding the size of the largest group.
+# Also checking what proportion of users belong to the largest group.
+# This is helping to understand how separated the network is.
+data.frame(
+  WeakComponents = full_components$no,
+  LargestComponent = max(full_components$csize),
+  LargestShare = round(
+    max(full_components$csize) / vcount(g),
+    3
+  )
+)
+```
+
+There are a total of **95 weakly connected components**. The largest
+component comprises **66 individuals**, representing just **13.4%** of
+all nodes.
+
+This serves as clear evidence of the fragmentation within the reply
+network. It indicates that there is not a singular, extensive dialogue
+involving all participants,instead, we observe numerous distinct reply
+chains and groups.
+
+## Degree distribution
+
+```{r degree-distribution}
+# Calculating the total number of incoming and outgoing reply connections for each user.
+full_degree = degree(
+  g,
+  mode = "all"
+)
+
+# Summarising the degree values to see how connections are being distributed among users.
+summary(full_degree)
+
+# Plotting the degree distribution to see how many users have fewer or more connections.
+# This is helping to identify whether a small number of users have many connections.
+hist(
+  full_degree,
+  breaks = 20,
+  main = "Degree distribution of the full reply network",
+  xlab = "Degree"
+)
+```
+
+Median Degree is **1** and the Maximum Degree is **53.** The
+distribution shows significant right skewness, indicating that the
+majority of users have only one connection, whereas a minority of users
+function as hubs.
+
+This phenomenon is similarly observable in the reply network structure.
+While numerous users engage in giving or receiving a single reply, those
+who are either creators or highly active tend to receive or send a
+greater number of replies.
+
+## Visualisation of full-network
+
+```{r full-network-plot, fig.width=7.5, fig.height=5.0, out.width='88%'}
+# Counting the incoming, outgoing and total reply connections for each user.
+full_in = degree(g, mode = "in")
+full_out = degree(g, mode = "out")
+full_degree = degree(g, mode = "all")
+
+# Grouping users based on whether they are receiving or sending more replies.
+# Users with the same number of incoming and outgoing connections are being marked as balanced.
+node_type = ifelse(
+  full_in > full_out,
+  "More incoming",
+  ifelse(
+    full_out > full_in,
+    "More outgoing",
+    "Balanced"
+  )
+)
+
+# Choosing different colours to show the three types of users in the network.
+node_colours = c(
+  "More incoming" = "lightblue",
+  "More outgoing" = "orange",
+  "Balanced" = "grey75"
+)
+
+# Assigning the colours to users based on their connection types.
+plot_colours = unname(node_colours[node_type])
+
+# Selecting the six most connected users to display their names on the graph.
+# This is keeping the network plot from becoming too crowded.
+full_labels = rep(NA, vcount(g))
+top_label_ids = order(
+  full_degree,
+  decreasing = TRUE
+)[1:min(6, vcount(g))]
+
+full_labels[top_label_ids] = V(g)$display[top_label_ids]
+
+# Setting the seed to keep the network layout consistent.
+set.seed(3020)
+
+# Plotting the reply network with node sizes based on the number of connections.
+# The colours are showing the different reply patterns for each user.
+plot(
+  g,
+  layout = layout_with_drl(g),
+  vertex.size = 3 + sqrt(full_degree),
+  vertex.color = plot_colours,
+  vertex.label = full_labels,
+  vertex.label.cex = 0.65,
+  edge.arrow.size = 0.2,
+  main = "Full FC 27 reply network"
+)
+
+# Adding a legend to explain what each node colour is representing.
+legend(
+  "topleft",
+  legend = names(node_colours),
+  col = node_colours,
+  pch = 19,
+  bty = "n",
+  cex = 0.8
+)
+```
+
+These properties are fully represented in the graph. Light blue nodes
+have a greater number of unique ties directed towards them than those
+they send, orange nodes show a higher number of unique ties sent than
+received, while grey nodes are characterised by a balance. The majority
+of the nodes are situated within small disconnected components, although
+a few large hub-and-spoke clusters are observable.
+
+## Centrality
+
+There are two centrality metrics used for the **full graph**:
+
+-   **Degree centrality** calculates the number of direct connections
+    for each user.
+-   **Betweenness centrality** calculates the number of shortest paths a
+    user is located on, allowing for bridging opportunities within the
+    sampled network.
+
+Centrality is calculated on the entire network and not the smaller
+subnetwork since the deletion of vertices would alter the paths and
+scores.
+
+```{r full-centrality}
+# Creating a table to compare how connected each user is in the reply network.
+centrality = data.frame(
+  User = V(g)$display,
+
+  # Counting how many replies are coming into and going out from each user.
+  InDegree = degree(g, mode = "in"),
+  OutDegree = degree(g, mode = "out"),
+
+  # Calculating the total number of direct connections for each user.
+  TotalDegree = degree(g, mode = "all"),
+
+  # Checking how often each user is appearing between other users on directed shortest paths.
+  Betweenness = betweenness(
+    g,
+    directed = TRUE
+  ),
+  stringsAsFactors = FALSE
+)
+```
+
+## Highest Degree
+
+```{r top-degree}
+# Sorting the users by total degree to find the accounts with the most direct connections.
+top_degree = centrality[
+  order(
+    centrality$TotalDegree,
+    decreasing = TRUE
+  ),
+]
+
+# Displaying the 10 most connected users in a table.
+# Showing incoming and outgoing connections separately to see how each user is interacting in the network.
+knitr::kable(
+  head(
+    top_degree[, c(
+      "User",
+      "InDegree",
+      "OutDegree",
+      "TotalDegree"
+    )],
+    10
+  ),
+  row.names = FALSE,
+  caption = "Users with the highest degree centrality"
+)
+```
+
+@AuzioMF has the greatest total degree which is **53** and all
+in-degree. This implies that the account received incoming ties from 53
+distinct users in the network and that the account did not generate any
+outbound reply ties in this dataset.
+
+@BFordLancer has the second highest total degree of **27** but the
+pattern is different: 6 incoming ties and 21 outgoing ties. That means a
+far more active involvement in responding to other commenters than just
+getting replies.
+
+## Highest Betweenness
+
+```{r top-betweenness}
+# Sorting the users by betweenness centrality to find those connecting different parts of the network.
+top_betweenness = centrality[
+  order(
+    centrality$Betweenness,
+    decreasing = TRUE
+  ),
+]
+
+# Displaying the 10 users with the highest betweenness values.
+# Also showing their total degree to compare their position in the network with their number of connections.
+knitr::kable(
+  head(
+    top_betweenness[, c(
+      "User",
+      "TotalDegree",
+      "Betweenness"
+    )],
+    10
+  ),
+  row.names = FALSE,
+  caption = "Users with the highest betweenness centrality"
+)
+```
+
+@BFordLancer displays the highest betweenness centrality, measured at
+**130**. While @AuzioMF possesses numerous direct connections, it has a
+betweenness centrality of zero,conversely, @BFordLancer plays a crucial
+role in multiple directed paths among other users.
+
+This distinction illustrates that each type of centrality addresses
+different inquiries. Degree centrality identifies essential local nodes,
+whereas betweenness centrality highlights positions akin to bridges.
+
+## Choosing a Subgraph
+
+The assignment also requires a justified smaller network. To avoid
+choosing an easily visible network from the data set, we compared each
+video's reply graph based on the number of nodes, edges, number of
+components, and largest connected component.
+
+```{r video-network-summary}
+video_summary = data.frame()
+
+for (video_id in selected_videos$videoId) {
+
+  video_data = network_data[
+    network_data$videoId == video_id,
+  ]
+  video_edges = unique(
+    video_data[, c("from", "to")]
+  )
+  if (nrow(video_edges) == 0) {
+    next
+  }
+
+  video_graph = graph_from_data_frame(
+    video_edges,
+    directed = TRUE
+  )
+  video_components = components(
+    video_graph,
+    mode = "weak"
+  )
+  video_summary = rbind(
+    video_summary,
+    data.frame(
+      videoId = video_id,
+      Nodes = vcount(video_graph),
+      Edges = ecount(video_graph),
+      Components = video_components$no,
+      LargestComponent = max(video_components$csize),
+      LargestShare = round(
+        max(video_components$csize) /
+        vcount(video_graph),
+        3
+      ),
+      Density = round(
+        edge_density(
+          video_graph,
+          loops = FALSE
+        ),
+        4
+      )
+    )
+  )
+}
+
+video_summary = merge(
+  video_summary,
+  selected_videos[, c(
+    "videoId",
+    "creator",
+    "category"
+  )],
+  by = "videoId"
+)
+video_summary = video_summary[
+  order(
+    video_summary$LargestComponent,
+    decreasing = TRUE
+  ),
+]
+video_summary_display = data.frame(
+  Creator = video_summary$creator,
+  Category = video_summary$category,
+  Nodes = video_summary$Nodes,
+  Edges = video_summary$Edges,
+  Components = video_summary$Components,
+  LargestComponent = video_summary$LargestComponent,
+  LargestShare = paste0(
+    round(video_summary$LargestShare * 100, 1),
+    "%"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(
+  video_summary_display,
+  row.names = FALSE,
+  col.names = c(
+    "Creator",
+    "Category",
+    "Nodes",
+    "Edges",
+    "Components",
+    "Largest component",
+    "Largest share"
+  ),
+  caption = "Reply-network structure by selected video"
+)
+```
+
+The AuzioMF Ultimate Team video had the largest weakly connected
+component, containing 66 users. Within the network for this video, there
+are 100 users and 87 distinct edges, with the largest weak component
+consisting of 66 users. In contrast, the BFordLancer video features a
+largest component of 43 users, indicating that the AuzioMF discussion
+represents the optimal choice for a connected subgraph. Notably, this is
+the largest component within the entire combined network.
+
+## Largest connected reply subgraph
+
+```{r build-subgraph}
+subgraph_video_id = video_summary$videoId[1]
+
+video_data = network_data[
+  network_data$videoId == subgraph_video_id,
+]
+
+video_edges = unique(
+  video_data[, c("from", "to")]
+)
+
+video_graph = graph_from_data_frame(
+  video_edges,
+  directed = TRUE
+)
+
+video_components = components(
+  video_graph,
+  mode = "weak"
+)
+
+largest_component_number = which.max(
+  video_components$csize
+)
+
+largest_component_vertices = V(video_graph)[
+  video_components$membership ==
+  largest_component_number
+]
+
+g_sub = induced_subgraph(
+  video_graph,
+  largest_component_vertices
+)
+
+V(g_sub)$display = author_lookup$label[
+  match(V(g_sub)$name, author_lookup$id)
+]
+V(g_sub)$display[
+  is.na(V(g_sub)$display)
+] = V(g_sub)$name[
+  is.na(V(g_sub)$display)
+]
+```
+
+```{r subgraph-summary}
+# Checking the number of users and reply connections in the selected subgraph.
+# Also calculating the density to see how closely the users are connected.
+data.frame(
+  SubgraphNodes = vcount(g_sub),
+  SubgraphEdges = ecount(g_sub),
+  SubgraphDensity = round(
+    edge_density(
+      g_sub,
+      loops = FALSE
+    ),
+    4
+  )
+)
+```
+
+The chosen connected sub-graph has **66 nodes and 66 directed edges**,
+where density = **0.0154**. It is more connected compared than the
+combined network, but it is still highly sparse.
+
+```{r subgraph-plot, fig.width=7.5, fig.height=5.0, out.width='88%'}
+# Counting the incoming, outgoing and total reply connections in the smaller network.
+sub_in = degree(g_sub, mode = "in")
+sub_out = degree(g_sub, mode = "out")
+sub_degree = degree(g_sub, mode = "all")
+
+# Grouping users based on whether they are receiving or sending more replies.
+# Using the same groups as the full network to keep the colours consistent.
+sub_type = ifelse(
+  sub_in > sub_out,
+  "More incoming",
+  ifelse(
+    sub_out > sub_in,
+    "More outgoing",
+    "Balanced"
+  )
+)
+
+# Assigning the colours based on each user's reply connections.
+sub_colours = unname(node_colours[sub_type])
+
+# Selecting the six most connected users to display their names.
+# This is keeping the smaller network easier to read.
+sub_labels = rep(NA, vcount(g_sub))
+sub_top_ids = order(
+  sub_degree,
+  decreasing = TRUE
+)[1:min(6, vcount(g_sub))]
+
+sub_labels[sub_top_ids] = V(g_sub)$display[sub_top_ids]
+
+# Setting the seed to keep the graph layout consistent.
+set.seed(3020)
+
+# Plotting the largest connected group with node sizes based on total degree.
+# Using the colours to show the different incoming and outgoing reply patterns.
+plot(
+  g_sub,
+  layout = layout_with_fr(g_sub),
+  vertex.size = 5 + sqrt(sub_degree) * 2,
+  vertex.color = sub_colours,
+  vertex.label = sub_labels,
+  vertex.label.cex = 0.75,
+  edge.arrow.size = 0.35,
+  main = "Largest connected reply subgraph"
+)
+
+# Adding a legend to explain what each colour is showing.
+legend(
+  "topleft",
+  legend = names(node_colours),
+  col = node_colours,
+  pch = 19,
+  bty = "n",
+  cex = 0.8
+)
+```
+
+This subnetwork also demonstrates an obvious **hub-and-spoke
+architecture with regard to @AuzioMF**. The light blue location of the
+node indicates the large amount of incoming ties, while many orange
+nodes located nearby have only outgoing ties in the form of replies.
+
+The small branch shows that the network is not a complete star, since
+some users reply to other commenters and form chains, but not as often
+as they reply to high-degree nodes.
+
+## Interpretation and Limitations
+
+The FC 27 reply network is large but fragmented, consisting of 492
+users, 95 weakly connected components, and a network density of 0.0017.
+Most users have only one connection, while a few accounts receive many
+connections.
+
+Centrality analysis identifies two key user types. @AuzioMF stands out
+as the primary centre of the network, receiving numerous replies from
+various users. @BFordLancer has fewer total ties than \@AuzioMF but much
+higher betweenness, indicating a more bridge-like position on directed
+shortest paths.
+
+Several limitations exist. Firstly, the network depends on public reply
+data from the YouTube API, excluding deleted, hidden, or inaccessible
+comments. Additionally, YouTube comments are structured into top-level
+comments, omitting multilevel discussions among individual replies. The
+analysis is confined to the first 72 hours. The graph assesses various
+interactions rather than the total number of messages sent, as repeated
+interactions between the same users are condensed into a single
+connection. Finally, the merging of nine videos into one graph results
+in numerous disconnected components.
+
+These limitations should be considered when examining the sparse network
+structure with hubs. The network serves as a representation of reply
+relationships in the early FC 27 debates, rather than a comprehensive
+social network of the entire FC 27 community.
+
+## 3. Overall Findings
+
+Overall, the five stages indicate that the discourse surrounding the FC
+27 launch is shaped by the type of content, yet it does not exist in
+completely separate communities. We see differences in the themes of
+discussion and interactions, but many elements of conversation are
+common across all three categories.
+
+The hypothesis test has shown strong evidence of differences in
+interaction, with review comments having the highest likelihood of
+receiving replies at 19.6%. In comparison, Ultimate Team and Career Mode
+videos had reply rates of 13.3% and 10.8%, respectively. The chi-square
+test indicated a general association between video category and the
+presence of replies, with a statistic of $\chi^2(2)$ = 7.8272 and p =
+0.01997. Although this does not establish causation, it highlights that
+early interactions were not evenly distributed among the three content
+types. Text analysis further clarifies some of these differences. Review
+comments used more general language related to FIFA, football, gameplay,
+and overall impressions. In contrast, Ultimate Team comments featured
+more specific terms like "evos," "pack," and "market," while Career Mode
+comments included words such as "sign," "career," "player," and
+"Chelsea." These findings suggest that viewers responded to the video
+content, but there are notable common vocabulary elements across the
+different category groups.
+
+Clustering analysis supports earlier conclusions while also highlighting
+their limitations. The three-cluster solution included a large mixed
+cluster with 534 comments, a small Ultimate Team pack cluster with 22
+comments, and a Review/gameplay cluster with 145 comments. The pack
+cluster was the most distinct, containing only Ultimate Team comments,
+even though category labels were not used to construct the clusters.
+Conversely, there was no prominent cluster for Career Mode comments, as
+most remained in the mixed cluster. This suggests that while the content
+category is associated with differences in the themes discussed, it does
+not completely dictate the language used by commenters.
+
+Network analysis provides an alternative perspective on the same
+discourse. The reply network included 492 nodes and 401 ties, but its
+density was just 0.0017, and there were 95 weak components. This
+indicates that interaction is quite fragmented and does not form a
+cohesive community discourse. The degree distribution was also highly
+right-skewed, suggesting that most users have a very limited number of
+ties. @AuzioMF recorded the highest total degree of 53, while
+@BFordLancer achieved the highest betweenness centrality at 130. This
+highlights that popularity and the role of an account as a bridge node
+in the network are distinct concepts.
+
+A valuable overall picture has emerged. Review comments had the highest
+reply rate, while the most unique textual cluster came from Ultimate
+Team videos. The reply network appeared as fragmented conversations with
+several hubs. The Career Mode discussions displayed identifiable
+vocabulary in the frequency analysis but were more integrated with the
+larger mixed textual cluster. This suggests that the discourse
+surrounding the launch of FC 27 is shaped by a combination of content
+type and creator-based interaction.
+
+## Overall Limitations
+
+The conclusions must be taken into account when designing the project.
+First of all, the 9 videos are not randomly sampled out of all FC 27
+content, they are purposefully selected. Secondly, the period of the
+first 72 hours after upload is analyzed. Finally, the balanced
+720-comment sample is good for comparing categories but is not
+applicable to representing the natural distribution of discussions on
+YouTube. Indeed, YouTube commenters are self-selected people and might
+differ from viewers who do not write any comments at all.
+
+The results of the text analysis depend on the settings of text
+processing such as custom stop-list, stemming, TF-IDF weighting, etc.
+
+This one-word analysis does not account for the complexity of sarcasm or
+even the overall phrase meaning. Moreover, some words can be specific to
+the particular video or artist chosen. Comments in the chi-square
+analysis are nested within nine videos, so independence may not hold
+perfectly The results of clustering depend on how comments are
+represented, the distance metric used, and the number of clusters k. In
+the network analysis, repeated ties were collapsed and nine separate
+videos were pooled into one graph. All these limitations mean that the
+results describe the patterns in the initial FC 27 YouTube chat
+discussion only, but not the entire community of FC 27 players.
+
+On the other hand, similar results obtained through different approaches
+imply that the content type is related to language used and interactions
+in comments, but there is a particularly strong structure in special
+discussions about the Ultimate Team and reply hubs initiated by the
+authors of the comments.
+
+**Repository:** `PASTE_GITHUB_OR_GITLAB_URL_HERE`

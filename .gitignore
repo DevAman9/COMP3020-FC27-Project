@@ -1,0 +1,11 @@
+api_key.R
+.Rproj.user/
+.Rhistory
+.RData
+.DS_Store
+*.log
+*.aux
+*.out
+*.tex
+*_files/
+*.pdf
