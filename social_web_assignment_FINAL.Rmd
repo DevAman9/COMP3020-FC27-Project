@@ -444,7 +444,7 @@ comments.corpus = tm_map(comments.corpus, removePunctuation)
 comments.corpus = tm_map(comments.corpus, stripWhitespace)
 comments.corpus = tm_map(comments.corpus, tolower)
 
-# making a list of custom stop words so we are filtering out game names and creators that are taking over our word counts
+# custom stop words remove game and creator names that dominate counts
 custom_words = c(
   "fc", "fc27", "eafc", "ea", "sports",
   "game", "like", "just", "get", "got", "can",
@@ -485,12 +485,6 @@ term_frequency = sort(rowSums(comments.matrix), decreasing = TRUE)
 # looking at the 20 most common words we are finding
 head(term_frequency, 20)
 ```
-
-Each category contains an equal number of comments, thus eliminating one
-possible source of imbalance. However, the comments could vary in terms
-of their number of words. To make it easier to compare the data
-visually, we normalized the frequency of each term with the total number
-of cleaned terms in each category.
 
 ```{r overall-wordcloud, fig.width=6.5, fig.height=3.2, out.width='60%'}
 # setting the seed here so we are getting the exact same word cloud every time
@@ -561,11 +555,10 @@ head(ultimate_relative, 10)
 head(career_relative, 10)
 ```
 
-The most frequent terms include `play`, `fifa`, `year`, `player`,
-`team`, `mode`, `football`, `career` and `gameplay`, showing that
-discussion centres on gameplay, players and game modes. More specialised
-terms such as `evos`, `pack`, `market`, `chelsea` and `passing` indicate
-several narrower discussion themes.
+The word cloud provides a global view of the cleaned vocabulary. Common
+terms such as `play`, `fifa`, `player`, `football`, `career`, `team` and
+`mode` stand out, while `evos` indicates a more specialised Ultimate
+Team topic.
 
 ```{r category-plots, fig.width=9, fig.height=3.5, out.width='100%'}
 # pulling the top 10 words for each of our three categories
@@ -659,7 +652,7 @@ helps in identifying unique terms.
 
 Word-level processing has its drawbacks. The word analysis method
 doesn't preserve the meaning of the sentence, sarcasm, or context. The
-custom stop-word list involves judgement. Ascii coding eliminates emojis
+custom stop-word list involves judgement. ASCII coding eliminates emojis
 and some special characters. Words related to a particular player, club
 or creator may reflect one selected video rather than the whole
 category. It would be fair to see the obtained results as the general
@@ -828,10 +821,13 @@ each cluster. The additional cluster represents a small but distinctive
 group of Ultimate Team pack comments, while the 145-comment
 Review/gameplay group also remains interpretable.
 
-For that reason, **three clusters were chosen**. This choice was made
-taking into account the shape of the elbow together with the structure
-and interpretation of $k=2,3,4,5$, and not the fact that there were
-three video categories in the initial dataset.
+For that reason, **three clusters were chosen**. By contrast, the $k=4$
+and $k=5$ solutions mainly split the smaller groups further while still
+leaving one dominant mixed cluster, so the additional clusters added
+complexity without producing clearer themes. This choice was made taking
+into account the shape of the elbow together with the structure and
+interpretation of $k=2,3,4,5$, and not the fact that there were three
+video categories in the initial dataset.
 
 ## Interpretation of three clusters
 
@@ -1129,8 +1125,8 @@ network, few of the possible user-to-user ties exist.
 
 ## Components
 
-iSince the network is a directed one, weak components are used to
-analyze the connectivity among users if direction of edges is neglected.
+Since the network is a directed one, weak components are used to analyze
+the connectivity among users if direction of edges is neglected.
 
 ```{r full-components}
 # Checking how users are connected in the network without considering the direction of replies.
@@ -1546,8 +1542,8 @@ data.frame(
 ```
 
 The chosen connected sub-graph has **66 nodes and 66 directed edges**,
-where density = **0.0154**. It is more connected compared than the
-combined network, but it is still highly sparse.
+where density = **0.0154**. It is more connected than the combined
+network, but it is still highly sparse.
 
 ```{r subgraph-plot, fig.width=7.5, fig.height=5.0, out.width='88%'}
 # Counting the incoming, outgoing and total reply connections in the smaller network.
@@ -1664,10 +1660,10 @@ distributed among the three content types. Text analysis further
 clarifies some of these differences. Review comments used more general
 language related to FIFA, football, gameplay, and overall impressions.
 In contrast, Ultimate Team comments featured more specific terms like
-"evos," "pack," and "market," while Career Mode comments included words
-such as "sign," "career," "player," and "Chelsea." These findings
-suggest that viewers responded to the video content, but there are
-notable common vocabulary elements across the different category groups.
+"evos," and "pack," while Career Mode comments included words such as
+"sign," "career," "player," and "Chelsea." These findings suggest that
+viewers responded to the video content, but there are notable common
+vocabulary elements across the different category groups.
 
 Clustering analysis supports earlier conclusions while also highlighting
 their limitations. The three-cluster solution included a large mixed
@@ -1702,10 +1698,10 @@ type and creator-based interaction.
 
 ## Overall Limitations
 
-The conclusions must be taken into account when designing the project.
-First of all, the 9 videos are not randomly sampled out of all FC 27
-content, they are purposefully selected. Secondly, the period of the
-first 72 hours after upload is analyzed. Finally, the balanced
+These conclusions should be interpreted within the design of the
+project. First of all, the 9 videos are not randomly sampled out of all
+FC 27 content, they are purposefully selected. Secondly, the period of
+the first 72 hours after upload is analyzed. Finally, the balanced
 720-comment sample is good for comparing categories but is not
 applicable to representing the natural distribution of discussions on
 YouTube. Indeed, YouTube commenters are self-selected people and might
@@ -1716,19 +1712,19 @@ processing such as custom stop-list, stemming, TF-IDF weighting, etc.
 
 This one-word analysis does not account for the complexity of sarcasm or
 even the overall phrase meaning. Moreover, some words can be specific to
-the particular video or artist chosen. Comments in the chi-square
+the particular video or creator selected. Comments in the chi-square
 analysis are nested within nine videos, so independence may not hold
-perfectly The results of clustering depend on how comments are
+perfectly. The results of clustering depend on how comments are
 represented, the distance metric used, and the number of clusters k. In
 the network analysis, repeated ties were collapsed and nine separate
 videos were pooled into one graph. All these limitations mean that the
-results describe the patterns in the initial FC 27 YouTube chat
+results fdescribe the patterns in the initial FC 27 YouTube chat
 discussion only, but not the entire community of FC 27 players.
 
 On the other hand, similar results obtained through different approaches
 imply that the content type is related to language used and interactions
-in comments, but there is a particularly strong structure in special
-discussions about the Ultimate Team and reply hubs initiated by the
-authors of the comments.
+in comments, but across the different methods, the clearest recurring
+structures are specialised Ultimate Team discussion and creator-centred
+reply hubs.
 
 **Repository:** <https://github.com/DevAman9/COMP3020-FC27-Project>
